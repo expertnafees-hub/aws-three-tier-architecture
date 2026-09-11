@@ -97,6 +97,12 @@ An enterprise-grade, highly available, and fault-tolerant **Three-Tier Web Appli
    - Permanent HTTP 301 redirection from Port 80 to Port 443, eliminating plaintext internet traffic.
    - Automated Route 53 DNS Alias records and validation handshakes.
 
+8. **Chaos Engineering & Self-Healing Verification**:
+   - Tested zero-downtime resilience under catastrophic EC2 failure.
+   - Continuous HTTP probe shifts 100% of traffic to the surviving AZ with zero dropped requests (100% 200 OK).
+   - Auto Scaling Group automatically detects the deficit and provisions replacement capacity within 90 seconds.
+   - Complete verification runbook documented in [`docs/CHAOS_RECOVERY_TEST.md`](docs/CHAOS_RECOVERY_TEST.md).
+
 ---
 
 ## 📁 Repository Structure
@@ -113,8 +119,33 @@ aws-three-tier-architecture/
 ├── compute.tf          # Launch Template (IMDSv2, Pinned AMI, Nginx), Auto Scaling Group
 ├── database.tf         # Multi-AZ RDS MySQL instance & AWS Secrets Manager vault
 ├── outputs.tf          # Public ALB DNS URL, Application URL, VPC ID, and Secrets ARN
+├── docs/
+│   └── CHAOS_RECOVERY_TEST.md  # Step-by-step failure recovery drill & interview runbook
+├── scripts/
+│   └── chaos_test.sh           # Automated continuous HTTP availability & failover monitor
 └── .gitignore          # Strict exclusion of .tfstate and sensitive variables
 ```
+
+---
+
+## 🧪 Chaos Engineering Drill: Proving Zero Downtime
+
+Rather than merely assuming high availability works, this repository includes an empirical failure-injection runbook and probe script:
+
+```bash
+# 1. Run continuous traffic probe against the ALB
+./scripts/chaos_test.sh
+
+# 2. In another terminal, terminate an EC2 instance in us-east-1a
+TARGET_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=three-tier-prod-asg-instance" "Name=instance-state-name,Values=running" \
+  --query "Reservations[0].Instances[0].InstanceId" --output text)
+
+aws ec2 terminate-instances --instance-ids "$TARGET_ID"
+
+# 3. Observe: Zero dropped requests (100% 200 OK) as ALB drains and ASG replaces the node.
+```
+> For complete sequence diagrams and senior interview talking points, see [**docs/CHAOS_RECOVERY_TEST.md**](docs/CHAOS_RECOVERY_TEST.md).
 
 ---
 
