@@ -1,9 +1,11 @@
 # 🚀 Production AWS Multi-AZ Three-Tier Architecture
 
+[![Terraform CI Validation](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions)
 [![Terraform](https://img.shields.io/badge/Terraform-v1.16+-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
 [![Architecture](https://img.shields.io/badge/Architecture-3--Tier-22D3EE)](https://aws.amazon.com/architecture/)
 [![Security](https://img.shields.io/badge/DevSecOps-IMDSv2%20%26%20Secrets%20Manager-3FB950)](https://aws.amazon.com/secrets-manager/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An enterprise-grade, highly available, and fault-tolerant **Three-Tier Web Application Architecture** deployed across 2 Availability Zones (`us-east-1a` and `us-east-1b`) in AWS, fully codified using **Terraform (HCL)** strictly following the **AWS Well-Architected Framework**.
 
