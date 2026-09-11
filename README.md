@@ -74,16 +74,21 @@ An enterprise-grade, highly available, and fault-tolerant **Three-Tier Web Appli
    - **Tier 2 (App)**: Ingress Port 80 restricted **strictly to `aws_security_group.alb.id`**. Direct public access is blocked.
    - **Tier 3 (Database)**: Ingress Port 3306 restricted **strictly to `aws_security_group.app.id`**. Neither public internet nor the load balancer can directly access the database.
 
-3. **EC2 IMDSv2 Hardening**:
-   - Instance Launch Templates strictly enforce `http_tokens = "required"`.
+3. **Zero-SSH Secure Management (AWS Systems Manager Session Manager)**:
+   - Port 22 is completely omitted from all Security Groups — zero public management attack surface.
+   - Instances assume an IAM role with `AmazonSSMManagedInstanceCore` and strictly scoped Secrets Manager read access.
+   - Administrators connect directly via AWS Systems Manager Session Manager without managing SSH `.pem` keys or opening ingress ports.
+
+4. **EC2 IMDSv2 Hardening**:
+   - Instance Launch Templates strictly enforce `http_tokens = "required"` and hop limit `1`.
    - Blocks Server-Side Request Forgery (SSRF) metadata credential theft vulnerabilities.
 
-4. **Self-Healing Multi-AZ Fleet**:
+5. **Self-Healing Multi-AZ Fleet**:
    - Auto Scaling Group automatically monitors instance health using **ELB health checks**.
    - Unhealthy instances are automatically terminated and re-provisioned in parallel availability zones.
    - Rolling updates configured with `instance_refresh` strategy.
 
-5. **FinOps Cost Awareness**:
+6. **FinOps Cost Awareness**:
    - Eligible for AWS Free Tier (750h `t3.micro`, 750h `db.t3.micro`).
    - Parameterized switches for NAT Gateway and Multi-AZ RDS to avoid unnecessary cloud spend during staging.
 
@@ -96,9 +101,10 @@ aws-three-tier-architecture/
 ├── providers.tf        # AWS & Random providers with strict semantic version constraints
 ├── variables.tf        # Clean input variable schemas with zero hardcoded defaults
 ├── vpc.tf              # VPC, 6 Subnets, Internet Gateway, DB Subnet Group, Route Tables
-├── security_groups.tf  # 3 Chained security groups enforcing least-privilege
+├── security_groups.tf  # 3 Chained security groups enforcing least-privilege (Zero Port 22)
+├── iam.tf              # IAM Role & Instance Profile for AWS Systems Manager (SSM) Session Manager
 ├── alb.tf              # Application Load Balancer, Target Group with health checks, Listener
-├── compute.tf          # Launch Template (IMDSv2, Nginx UserData), Auto Scaling Group
+├── compute.tf          # Launch Template (IMDSv2, Pinned AMI, Nginx), Auto Scaling Group
 ├── database.tf         # Multi-AZ RDS MySQL instance & AWS Secrets Manager vault
 ├── outputs.tf          # Public ALB DNS URL, VPC ID, and Secrets Manager ARN
 └── .gitignore          # Strict exclusion of .tfstate and sensitive variables

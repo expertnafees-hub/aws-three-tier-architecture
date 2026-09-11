@@ -58,6 +58,12 @@ variable "db_username" {
   default     = "dbadmin"
 }
 
+variable "ec2_ami_id" {
+  description = "Pinned Amazon Linux 2023 AMI ID in us-east-1 for immutable, deterministic infrastructure"
+  type        = string
+  default     = "ami-0c101f26f147fa7fd"
+}
+
 variable "db_multi_az" {
   description = "Toggle Multi-AZ for RDS (Set to false for zero-cost free tier)"
   type        = bool

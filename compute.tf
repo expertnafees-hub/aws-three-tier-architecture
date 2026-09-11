@@ -1,33 +1,21 @@
 # -----------------------------------------------------------------------------
-# 1. LATEST AMAZON LINUX 2023 AMI DATA SOURCE
+# 1. EC2 LAUNCH TEMPLATE (Tier 2 Compute Blueprint)
 # -----------------------------------------------------------------------------
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# -----------------------------------------------------------------------------
-# 2. EC2 LAUNCH TEMPLATE (Tier 2 Compute Blueprint)
-# -----------------------------------------------------------------------------
+# Follows Rule B6: Pinned AMI ID ensures deterministic plans and eliminates silent rolling refreshes.
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.project_name}-lt-"
-  image_id      = data.aws_ami.amazon_linux_2023.id
+  image_id      = var.ec2_ami_id
   instance_type = "t3.micro" # AWS Modern Nitro Architecture (Free Tier Eligible)
 
   # Network Interface: Public IP for software download, chained SG for security
   network_interfaces {
     associate_public_ip_address = true
     security_groups             = [aws_security_group.app.id]
+  }
+
+  # IAM Instance Profile: Enables AWS Systems Manager (SSM) Session Manager & Secrets Access
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ec2_profile.arn
   }
 
   # Enforce IMDSv2 (Blocks SSRF Metadata Attacks)
