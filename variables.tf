@@ -69,3 +69,15 @@ variable "db_multi_az" {
   type        = bool
   default     = false
 }
+
+variable "enable_custom_domain" {
+  description = "Toggle Route 53 DNS records, ACM TLS certificate, and ALB HTTPS :443 listener"
+  type        = bool
+  default     = false
+}
+
+variable "domain_name" {
+  description = "Custom domain name (e.g. app.example.com) for Route 53 and ACM"
+  type        = string
+  default     = ""
+}

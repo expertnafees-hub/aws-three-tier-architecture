@@ -45,12 +45,47 @@ resource "aws_lb_target_group" "app" {
 }
 
 # -----------------------------------------------------------------------------
-# 3. ALB HTTP LISTENER (Port 80 Forwarding)
+# 3. ALB HTTP LISTENER (Port 80: Forward or 301 Redirect to HTTPS)
 # -----------------------------------------------------------------------------
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
+
+  # Production Flow: When custom domain is enabled, redirect HTTP :80 -> HTTPS :443
+  dynamic "default_action" {
+    for_each = var.enable_custom_domain ? [1] : []
+    content {
+      type = "redirect"
+
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+
+  # Lab Flow: When custom domain is disabled, forward HTTP directly to Target Group
+  dynamic "default_action" {
+    for_each = var.enable_custom_domain ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.app.arn
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# 4. ALB HTTPS LISTENER (Port 443: Modern TLS 1.3 Termination with ACM Cert)
+# -----------------------------------------------------------------------------
+resource "aws_lb_listener" "https" {
+  count             = var.enable_custom_domain ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.cert[0].certificate_arn
 
   default_action {
     type             = "forward"

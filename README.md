@@ -92,6 +92,11 @@ An enterprise-grade, highly available, and fault-tolerant **Three-Tier Web Appli
    - Eligible for AWS Free Tier (750h `t3.micro`, 750h `db.t3.micro`).
    - Parameterized switches for NAT Gateway and Multi-AZ RDS to avoid unnecessary cloud spend during staging.
 
+7. **End-to-End TLS & Domain Automation (Route 53 + ACM HTTPS)**:
+   - Modern TLS 1.3/1.2 termination on ALB Port 443 with automated ACM SSL/TLS certificates.
+   - Permanent HTTP 301 redirection from Port 80 to Port 443, eliminating plaintext internet traffic.
+   - Automated Route 53 DNS Alias records and validation handshakes.
+
 ---
 
 ## 📁 Repository Structure
@@ -103,10 +108,11 @@ aws-three-tier-architecture/
 ├── vpc.tf              # VPC, 6 Subnets, Internet Gateway, DB Subnet Group, Route Tables
 ├── security_groups.tf  # 3 Chained security groups enforcing least-privilege (Zero Port 22)
 ├── iam.tf              # IAM Role & Instance Profile for AWS Systems Manager (SSM) Session Manager
-├── alb.tf              # Application Load Balancer, Target Group with health checks, Listener
+├── dns_acm.tf          # Route 53 DNS Alias, ACM Certificate & Validation handshakes
+├── alb.tf              # ALB, Target Group, HTTPS :443 Listener & HTTP :80 Redirect
 ├── compute.tf          # Launch Template (IMDSv2, Pinned AMI, Nginx), Auto Scaling Group
 ├── database.tf         # Multi-AZ RDS MySQL instance & AWS Secrets Manager vault
-├── outputs.tf          # Public ALB DNS URL, VPC ID, and Secrets Manager ARN
+├── outputs.tf          # Public ALB DNS URL, Application URL, VPC ID, and Secrets ARN
 └── .gitignore          # Strict exclusion of .tfstate and sensitive variables
 ```
 

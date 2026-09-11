@@ -1,3 +1,8 @@
+output "application_url" {
+  description = "Primary entrypoint URL for the application (HTTPS when custom domain is enabled)"
+  value       = var.enable_custom_domain ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+}
+
 output "alb_public_dns" {
   description = "Public DNS URL of the Application Load Balancer"
   value       = "http://${aws_lb.main.dns_name}"
