@@ -103,6 +103,13 @@ An enterprise-grade, highly available, and fault-tolerant **Three-Tier Web Appli
    - Auto Scaling Group automatically detects the deficit and provisions replacement capacity within 90 seconds.
    - Complete verification runbook documented in [`docs/CHAOS_RECOVERY_TEST.md`](docs/CHAOS_RECOVERY_TEST.md).
 
+9. **Full-Stack Observability & Automated Alerting (CloudWatch & SNS)**:
+   - **ALB 5XX Target Errors**: Instant alarm upon receiving HTTP 5XX server errors from application instances.
+   - **p95 Latency SLA Guard**: Evaluates target response times and alarms if p95 exceeds 1000ms.
+   - **Fleet Health Monitoring**: Detects unhealthy instances failing ELB health checks.
+   - **Compute Thresholds**: Monitors Auto Scaling Group CPU utilization with an 80% threshold.
+   - **Codified Operational Dashboard**: CloudWatch dashboard displaying live ingress request volume, error splits, latency percentiles, and host health.
+
 ---
 
 ## 📁 Repository Structure
@@ -118,6 +125,7 @@ aws-three-tier-architecture/
 ├── alb.tf              # ALB, Target Group, HTTPS :443 Listener & HTTP :80 Redirect
 ├── compute.tf          # Launch Template (IMDSv2, Pinned AMI, Nginx), Auto Scaling Group
 ├── database.tf         # Multi-AZ RDS MySQL instance & AWS Secrets Manager vault
+├── cloudwatch.tf       # CloudWatch Alarms (5XX, Latency, ASG CPU, Health) & Dashboard
 ├── outputs.tf          # Public ALB DNS URL, Application URL, VPC ID, and Secrets ARN
 ├── docs/
 │   └── CHAOS_RECOVERY_TEST.md  # Step-by-step failure recovery drill & interview runbook
@@ -146,6 +154,26 @@ aws ec2 terminate-instances --instance-ids "$TARGET_ID"
 # 3. Observe: Zero dropped requests (100% 200 OK) as ALB drains and ASG replaces the node.
 ```
 > For complete sequence diagrams and senior interview talking points, see [**docs/CHAOS_RECOVERY_TEST.md**](docs/CHAOS_RECOVERY_TEST.md).
+
+---
+
+## 📊 Observability & Operational Telemetry
+
+This architecture codifies production-grade observability via **Amazon CloudWatch** and **Amazon SNS**:
+
+| Metric Alarm | Threshold | Evaluation Window | Target Component |
+| :--- | :--- | :--- | :--- |
+| **`alb-high-5xx-errors`** | `HTTPCode_Target_5XX_Count > 0` | 1 period of 60s | Tier 1 Gateway / App Health |
+| **`alb-high-target-latency`** | `TargetResponseTime (p95) > 1.0s` | 2 periods of 60s | Client User Experience (SLA) |
+| **`tg-unhealthy-hosts`** | `UnHealthyHostCount > 0` | 1 period of 60s | Target Group Health State |
+| **`asg-high-cpu-utilization`** | `CPUUtilization >= 80%` | 2 periods of 120s | Tier 2 Compute Fleet Sizing |
+
+### Codified CloudWatch Dashboard
+An automated operational dashboard (`three-tier-prod-telemetry`) aggregates:
+- **ALB Ingress Traffic**: Request count alongside 4XX and 5XX error rates.
+- **Latency Percentiles**: Real-time p95 and average target response times.
+- **Fleet Availability**: Active healthy targets vs failing hosts across both AZs.
+- **Compute Saturation**: Cluster-wide ASG CPU utilization.
 
 ---
 
