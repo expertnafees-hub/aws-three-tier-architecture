@@ -1,5 +1,4 @@
-# AWS Multi-AZ Three-Tier Architecture with Terraform
-
+Terraform-based AWS three-tier architecture with public ALB, private Auto Scaling EC2, isolated RDS, IAM, Secrets Manager, CloudWatch, and optional Multi-AZ/HTTPS.
 [![Terraform CI Validation](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions)
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.5-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
