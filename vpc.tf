@@ -24,7 +24,7 @@ resource "aws_internet_gateway" "igw" {
 }
 
 # -----------------------------------------------------------------------------
-# TIER 1: PUBLIC SUBNETS (Web / ALB)
+# TIER 1: PUBLIC SUBNETS (ALB + NAT Gateways)
 # -----------------------------------------------------------------------------
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
@@ -39,7 +39,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-# Public Route Table (Routes all 0.0.0.0/0 to Internet Gateway)
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -59,6 +58,31 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# One NAT Gateway per public subnet/AZ keeps private application egress available
+# when a single Availability Zone is impaired. NAT Gateways incur hourly/data costs.
+resource "aws_eip" "nat" {
+  count  = length(var.public_subnet_cidrs)
+  domain = "vpc"
+
+  depends_on = [aws_internet_gateway.igw]
+
+  tags = {
+    Name = "${var.project_name}-nat-eip-${count.index + 1}"
+  }
+}
+
+resource "aws_nat_gateway" "this" {
+  count         = length(var.public_subnet_cidrs)
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
+
+  depends_on = [aws_internet_gateway.igw]
+
+  tags = {
+    Name = "${var.project_name}-nat-${count.index + 1}"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # TIER 2: PRIVATE APPLICATION SUBNETS (EC2 Backend)
 # -----------------------------------------------------------------------------
@@ -75,23 +99,29 @@ resource "aws_subnet" "private" {
   }
 }
 
-# Private Route Table
+# Use one private route table per application subnet so each AZ uses its local NAT.
 resource "aws_route_table" "private" {
+  count  = length(var.private_subnet_cidrs)
   vpc_id = aws_vpc.main.id
 
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.this[count.index % length(aws_nat_gateway.this)].id
+  }
+
   tags = {
-    Name = "${var.project_name}-private-rt"
+    Name = "${var.project_name}-private-rt-${count.index + 1}"
   }
 }
 
 resource "aws_route_table_association" "private" {
   count          = length(var.private_subnet_cidrs)
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[count.index].id
 }
 
 # -----------------------------------------------------------------------------
-# TIER 3: ISOLATED DATABASE SUBNETS (RDS / Aurora)
+# TIER 3: ISOLATED DATABASE SUBNETS (RDS)
 # -----------------------------------------------------------------------------
 resource "aws_subnet" "database" {
   count                   = length(var.database_subnet_cidrs)
@@ -106,10 +136,9 @@ resource "aws_subnet" "database" {
   }
 }
 
-# Database Subnet Group (Required by RDS)
 resource "aws_db_subnet_group" "main" {
   name        = "${var.project_name}-db-subnet-group"
-  description = "Subnet group for Multi-AZ isolated database"
+  description = "Subnet group for isolated RDS database tier"
   subnet_ids  = aws_subnet.database[*].id
 
   tags = {
@@ -117,7 +146,7 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# Database Route Table (Strictly isolated: No 0.0.0.0/0 route)
+# No default route is intentionally configured for the database tier.
 resource "aws_route_table" "database" {
   vpc_id = aws_vpc.main.id
 

@@ -1,31 +1,31 @@
 # -----------------------------------------------------------------------------
 # 1. EC2 LAUNCH TEMPLATE (Tier 2 Compute Blueprint)
 # -----------------------------------------------------------------------------
-# Follows Rule B6: Pinned AMI ID ensures deterministic plans and eliminates silent rolling refreshes.
+# Pinned AMI ID keeps plans deterministic. Review and deliberately update the AMI
+# as part of patching; a pinned AMI is not a substitute for a patching process.
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.project_name}-lt-"
   image_id      = var.ec2_ami_id
-  instance_type = "t3.micro" # AWS Modern Nitro Architecture (Free Tier Eligible)
+  instance_type = "t3.micro"
 
-  # Network Interface: Public IP for software download, chained SG for security
+  # Application instances are private: no public IPv4 address is assigned.
+  # Outbound package/SSM/AWS API access is provided through the private subnet NAT route.
   network_interfaces {
-    associate_public_ip_address = true
+    associate_public_ip_address = false
     security_groups             = [aws_security_group.app.id]
   }
 
-  # IAM Instance Profile: Enables AWS Systems Manager (SSM) Session Manager & Secrets Access
   iam_instance_profile {
     arn = aws_iam_instance_profile.ec2_profile.arn
   }
 
-  # Enforce IMDSv2 (Blocks SSRF Metadata Attacks)
+  # Require IMDSv2 and keep the metadata hop limit narrow.
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
   }
 
-  # Hardened User Data script with IMDSv2 dynamic token lookup
   user_data = base64encode(<<-EOF
               #!/bin/bash
               set -euo pipefail
@@ -35,7 +35,6 @@ resource "aws_launch_template" "app" {
               systemctl start nginx
               systemctl enable nginx
 
-              # IMDSv2 Token Retrieval
               TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
               INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
               AVAILABILITY_ZONE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)
@@ -46,7 +45,7 @@ resource "aws_launch_template" "app" {
               <html lang="en">
               <head>
                 <meta charset="UTF-8">
-                <title>Production 3-Tier Architecture</title>
+                <title>AWS 3-Tier Architecture Lab</title>
                 <style>
                   body { font-family: monospace; background: #070A0F; color: #E6EDF3; padding: 40px; text-align: center; }
                   .card { background: #0D1117; border: 1px solid #30363D; border-radius: 12px; padding: 32px; max-width: 650px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -60,9 +59,9 @@ resource "aws_launch_template" "app" {
               <body>
                 <div class="card">
                   <span class="badge">● TIER 2 COMPUTE ACTIVE</span>
-                  <h2>🚀 Production AWS 3-Tier Architecture</h2>
+                  <h2>🚀 AWS 3-Tier Architecture Lab</h2>
                   <p style="color: #8B949E;">Engineered by: <span class="highlight">Nafees Ur Rehman</span></p>
-                  
+
                   <div style="margin-top: 24px; text-align: left;">
                     <div class="metric-row">
                       <span class="metric-label">Instance ID:</span>
@@ -82,11 +81,11 @@ resource "aws_launch_template" "app" {
                     </div>
                     <div class="metric-row">
                       <span class="metric-label">Database Tier:</span>
-                      <span>Multi-AZ RDS MySQL (Tier 3 Isolated)</span>
+                      <span>Amazon RDS MySQL (Tier 3 Isolated)</span>
                     </div>
                   </div>
 
-                  <p style="font-size: 11px; color: #8B949E; margin-top: 24px;">Refresh this browser tab to watch the ALB alternate across Availability Zones!</p>
+                  <p style="font-size: 11px; color: #8B949E; margin-top: 24px;">Refresh to observe requests being served by healthy targets across Availability Zones.</p>
                 </div>
               </body>
               </html>
@@ -108,20 +107,18 @@ resource "aws_launch_template" "app" {
 }
 
 # -----------------------------------------------------------------------------
-# 3. AUTO SCALING GROUP (Dual-AZ with Rolling Updates & ELB Health Checks)
+# 2. AUTO SCALING GROUP (Multi-AZ with ELB Health Checks)
 # -----------------------------------------------------------------------------
 resource "aws_autoscaling_group" "app" {
   name_prefix         = "${var.project_name}-asg-"
-  vpc_zone_identifier = aws_subnet.public[*].id
+  vpc_zone_identifier = aws_subnet.private[*].id
 
   min_size         = 2
   max_size         = 4
   desired_capacity = 2
 
-  # Forward to ALB Target Group
   target_group_arns = [aws_lb_target_group.app.arn]
 
-  # ELB Application-level Health Checks
   health_check_type         = "ELB"
   health_check_grace_period = 300
 
@@ -130,7 +127,9 @@ resource "aws_autoscaling_group" "app" {
     version = "$Latest"
   }
 
-  # Production Zero-Downtime Rolling Instance Refresh
+  # Rolling refresh improves deployment continuity, but is not described as a
+  # universal zero-downtime guarantee. Availability depends on target health,
+  # application behavior and capacity during the refresh.
   instance_refresh {
     strategy = "Rolling"
     preferences {

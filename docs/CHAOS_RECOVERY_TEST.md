@@ -1,127 +1,171 @@
-# 🧪 Chaos Engineering Drill: Proving Auto Scaling Self-Healing & Zero Downtime
+# Controlled Single-Instance Failure & Self-Healing Test
 
-> **Target Architecture**: AWS Multi-AZ Three-Tier Architecture (`expertnafees-hub/aws-three-tier-architecture`)  
-> **Evaluated Component**: Auto Scaling Group (ASG), Application Load Balancer (ALB), Target Group Health Checks  
-> **Failure Mode Tested**: Catastrophic EC2 Instance Outage in Availability Zone `us-east-1a`
+> **Target architecture:** AWS multi-AZ three-tier portfolio project  
+> **Components under test:** Application Load Balancer, Target Group health checks, Auto Scaling Group  
+> **Failure mode:** Intentional termination of one EC2 application instance
 
----
+## Purpose
 
-## 🎯 Test Objective
-To empirically prove that the multi-AZ infrastructure exhibits **true self-healing high availability**:
-1. When an active EC2 compute instance fails or is intentionally terminated, incoming client traffic experiences **Zero Dropped Requests (100% 200 OK)**.
-2. The Application Load Balancer (ALB) instantly detects the failed node via target group health checks and ceases routing traffic to it.
-3. The Auto Scaling Group (ASG) detects `Actual Capacity (1) < Desired Capacity (2)` and automatically launches a replacement node from the Launch Template.
+This runbook tests one specific failure scenario: loss of a single application instance while another healthy target remains available in a second Availability Zone.
 
----
+It is **not** proof of universal zero downtime, regional disaster recovery, or complete production resilience. Record and report only what you actually observe during the test.
 
-## ⏱️ Timeline of Automated Self-Healing
+## Expected behavior
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as Browser / Load Test
-    participant ALB as Application Load Balancer
-    participant EC2_A as Instance A (us-east-1a)
-    participant EC2_B as Instance B (us-east-1b)
-    participant ASG as Auto Scaling Group
+1. Requests are sent continuously through the application entrypoint.
+2. One EC2 application instance is intentionally terminated.
+3. The ALB stops routing new traffic to the failed/unhealthy target after health state changes.
+4. Remaining healthy targets continue serving requests if sufficient healthy capacity exists.
+5. The Auto Scaling Group detects the capacity deficit and launches replacement capacity.
+6. The replacement instance runs user data, passes target-group health checks, and returns to service.
 
-    Note over Client,EC2_B: Normal Operation: Traffic distributed 50/50 across AZs
-    Client->>ALB: HTTP GET /
-    ALB->>EC2_A: 200 OK (Served by AZ-a)
-    Client->>ALB: HTTP GET /
-    ALB->>EC2_B: 200 OK (Served by AZ-b)
+## Test prerequisites
 
-    Note over EC2_A: 💥 CHAOS EVENT: Instance A Terminated
-    ALB->>EC2_A: Health Check fails (Connection refused)
-    ALB-->>ALB: Target status -> Draining / Unhealthy
-    
-    Note over Client,ALB: Continuous Traffic Stream During Outage
-    Client->>ALB: HTTP GET /
-    ALB->>EC2_B: 200 OK (100% Routed to Surviving Node - Zero Downtime!)
+- The stack is deployed successfully.
+- The Auto Scaling Group has at least two healthy instances across multiple Availability Zones.
+- The target group reports all intended targets as healthy.
+- You are authenticated to the correct AWS account and region.
+- You understand that terminating an instance is a destructive action.
 
-    ASG->>ASG: Detects Capacity Deficit (1 of 2 running)
-    ASG->>EC2_A: Terminate & purge unhealthy node
-    ASG->>ALB: Launch new Instance C (from Launch Template)
-    
-    Note over ALB: Instance C passes UserData & ELB Health Checks
-    ALB-->>ALB: Target status -> Healthy
-    Client->>ALB: HTTP GET /
-    ALB->>EC2_B: 200 OK (Served by AZ-b)
-    Client->>ALB: HTTP GET /
-    ALB->>EC2_B: 200 OK (Served by Instance C in AZ-a)
-```
-
----
-
-## 🛠️ Step-by-Step Execution Protocol
-
-### Step 1: Start Continuous Traffic Stream
-In your Ubuntu terminal, run a continuous probe against your ALB DNS name to record status codes:
+Before running the test:
 
 ```bash
-ALB_DNS=$(terraform output -raw alb_public_dns)
-
-echo "Starting probe against $ALB_DNS..."
-while true; do
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$ALB_DNS" || echo "FAILED")
-  AZ=$(curl -s "$ALB_DNS" | grep -o 'us-east-1[a-z]' | head -1 || echo "unknown")
-  echo "[$(date +'%T')] Status: $STATUS | Backend: $AZ"
-  sleep 1
-done
+aws sts get-caller-identity
+aws configure get region
+terraform output
 ```
 
----
+## Step 1: Start the repository probe
 
-### Step 2: Trigger Intentional Catastrophic Failure (Terminate 1 EC2)
-In a second terminal window, identify the running instances and terminate one:
+The probe uses `application_url`, so it follows the configured entrypoint: ALB HTTP for the default lab or the custom HTTPS domain when enabled.
 
 ```bash
-# 1. List running instance IDs in your ASG
-aws ec2 describe-instances \
-  --filters "Name=tag:Name,Values=three-tier-prod-asg-instance" "Name=instance-state-name,Values=running" \
-  --query "Reservations[*].Instances[*].[InstanceId,Placement.AvailabilityZone]" \
+./scripts/chaos_test.sh | tee chaos-test-$(date +%Y%m%d-%H%M%S).log
+```
+
+Keep the resulting log as evidence if you plan to discuss the test in a portfolio or interview.
+
+## Step 2: Confirm target health
+
+Use the exact target-group ARN from Terraform rather than guessing a resource name:
+
+```bash
+TG_ARN=$(terraform output -raw target_group_arn)
+
+aws elbv2 describe-target-health \
+  --target-group-arn "$TG_ARN" \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State,TargetHealth.Reason]' \
   --output table
+```
 
-# 2. Terminate the first instance (Replace with your actual Instance ID)
-TARGET_ID=$(aws ec2 describe-instances \
-  --filters "Name=tag:Name,Values=three-tier-prod-asg-instance" "Name=instance-state-name,Values=running" \
-  --query "Reservations[0].Instances[0].InstanceId" \
+Do not continue unless the expected application targets are healthy.
+
+## Step 3: Identify the Auto Scaling Group and instances
+
+Use the exact ASG name from Terraform:
+
+```bash
+ASG_NAME=$(terraform output -raw autoscaling_group_name)
+
+echo "ASG=$ASG_NAME"
+
+aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names "$ASG_NAME" \
+  --query 'AutoScalingGroups[0].Instances[*].[InstanceId,AvailabilityZone,HealthStatus,LifecycleState]' \
+  --output table
+```
+
+## Step 4: Terminate exactly one application instance
+
+Select one current instance deliberately and verify it before termination.
+
+```bash
+TARGET_ID=$(aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names "$ASG_NAME" \
+  --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
   --output text)
 
-echo "Terminating instance: $TARGET_ID"
+echo "About to terminate: $TARGET_ID"
+aws ec2 describe-instances \
+  --instance-ids "$TARGET_ID" \
+  --query 'Reservations[0].Instances[0].[InstanceId,Placement.AvailabilityZone,State.Name]' \
+  --output table
+```
+
+Then terminate it:
+
+```bash
 aws ec2 terminate-instances --instance-ids "$TARGET_ID"
 ```
 
----
+## Step 5: Observe the test
 
-### Step 3: Observe Real-Time Recovery
+Keep the HTTP probe running and separately watch Auto Scaling activity:
 
-1. **In Terminal 1 (The Probe Stream)**:
-   Notice that while the targeted instance shuts down, **not a single request returns 502/503 or drops**. All requests immediately shift 100% to the healthy instance in the opposing Availability Zone:
-   ```text
-   [20:30:15] Status: 200 | Backend: us-east-1a
-   [20:30:16] Status: 200 | Backend: us-east-1b
-   [20:30:17] Status: 200 | Backend: us-east-1a   <-- Terminated here
-   [20:30:18] Status: 200 | Backend: us-east-1b
-   [20:30:19] Status: 200 | Backend: us-east-1b   <-- Traffic shifts seamlessly!
-   [20:30:20] Status: 200 | Backend: us-east-1b
-   ```
+```bash
+watch -n 5 "aws autoscaling describe-scaling-activities \
+  --auto-scaling-group-name '$ASG_NAME' \
+  --max-items 5 \
+  --query 'Activities[*].[StartTime,StatusCode,Description]' \
+  --output table"
+```
 
-2. **In Terminal 2 (ASG Activity Stream)**:
-   Watch the Auto Scaling Group trigger self-healing:
-   ```bash
-   aws autoscaling describe-scaling-activities \
-     --auto-scaling-group-name $(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[0].AutoScalingGroupName" --output text) \
-     --query "Activities[0:2].[Description,StatusCode,StartTime]" \
-     --output table
-   ```
-   **Expected Output**:
-   ```text
-   Launching a new EC2 instance: i-0abcd9876...  | Successful | 2026-09-11...
-   Terminating EC2 instance: i-01234567...       | Successful | 2026-09-11...
-   ```
+Also watch target health:
 
----
+```bash
+watch -n 5 "aws elbv2 describe-target-health \
+  --target-group-arn '$TG_ARN' \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State,TargetHealth.Reason]' \
+  --output table"
+```
 
-### 📊 Interview Evidence & Talking Point
-> *"Rather than merely claiming high availability, I executed a chaos engineering drill against my live three-tier infrastructure. While executing a continuous 1-second HTTP workload against the ALB, I terminated one of the EC2 backend instances. The ALB immediately ceased routing to the drained node and shifted 100% of traffic to the surviving AZ with zero dropped requests. Within 90 seconds, the Auto Scaling Group detected the capacity deficit and automatically provisioned a replacement node from the Launch Template, restoring dual-AZ redundancy."*
+## What to record
+
+Capture actual values instead of writing expected results as facts:
+
+- test start time
+- terminated instance ID and Availability Zone
+- number of HTTP requests sent
+- number of failed/non-200 requests observed
+- time until the failed target stopped receiving traffic
+- time until replacement capacity launched
+- time until the replacement target became healthy
+- any 5xx/timeout behavior
+
+## How to describe the result accurately
+
+Good:
+
+> During a controlled single-instance termination test, I sent one HTTP request per second through the application entrypoint. In that specific run, I observed 0 failed requests while the remaining healthy target served traffic. The Auto Scaling Group launched replacement capacity, which became healthy after X seconds.
+
+Bad:
+
+> My architecture guarantees zero downtime.
+
+One successful test demonstrates behavior under that tested condition. It does not prove every failure mode, every traffic level, or every dependency failure.
+
+## Additional failure tests worth running
+
+After the single-instance test, expand carefully:
+
+- break the target-group health-check path
+- stop Nginx without terminating the instance
+- test loss of one NAT Gateway/AZ
+- enable RDS Multi-AZ and test a controlled database failover
+- test an application deployment with an unhealthy build
+- verify CloudWatch alarms and SNS delivery
+
+Run only tests whose blast radius and cost you understand.
+
+## Cleanup
+
+Confirm the Auto Scaling Group returns to desired capacity and all intended targets become healthy:
+
+```bash
+aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names "$ASG_NAME" \
+  --query 'AutoScalingGroups[0].[DesiredCapacity,Instances[*].[InstanceId,HealthStatus,LifecycleState]]' \
+  --output table
+```
+
+If this is a temporary lab, destroy it after collecting evidence to avoid ongoing charges.

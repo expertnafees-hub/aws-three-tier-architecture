@@ -25,7 +25,7 @@ resource "aws_iam_role" "ec2_ssm" {
 }
 
 # -----------------------------------------------------------------------------
-# 2. ATTACH AWS MANAGED SSM CORE POLICY (Enables Session Manager Shell)
+# 2. AWS MANAGED SSM CORE POLICY
 # -----------------------------------------------------------------------------
 resource "aws_iam_role_policy_attachment" "ssm_core" {
   role       = aws_iam_role.ec2_ssm.name
@@ -33,11 +33,11 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
 }
 
 # -----------------------------------------------------------------------------
-# 3. LEAST-PRIVILEGE POLICY: SECRETS MANAGER READ (Explicitly Scoped)
+# 3. LEAST-PRIVILEGE POLICY: READ ONLY THIS RDS-MANAGED SECRET
 # -----------------------------------------------------------------------------
 resource "aws_iam_policy" "secrets_read" {
   name_prefix = "${var.project_name}-secrets-read-"
-  description = "Allows EC2 instances to retrieve database credentials from AWS Secrets Manager"
+  description = "Allows application instances to retrieve only the RDS-managed master credential secret"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -48,7 +48,7 @@ resource "aws_iam_policy" "secrets_read" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = aws_secretsmanager_secret.db_credentials.arn
+        Resource = aws_db_instance.rds.master_user_secret[0].secret_arn
       }
     ]
   })
