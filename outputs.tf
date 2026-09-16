@@ -4,8 +4,18 @@ output "application_url" {
 }
 
 output "alb_public_dns" {
-  description = "Public DNS URL of the Application Load Balancer"
+  description = "HTTP URL of the Application Load Balancer"
   value       = "http://${aws_lb.main.dns_name}"
+}
+
+output "target_group_arn" {
+  description = "ARN of the ALB target group used by the application fleet"
+  value       = aws_lb_target_group.app.arn
+}
+
+output "autoscaling_group_name" {
+  description = "Name of the application Auto Scaling Group"
+  value       = aws_autoscaling_group.app.name
 }
 
 output "vpc_id" {
