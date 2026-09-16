@@ -12,7 +12,7 @@ It is **not** proof of universal zero downtime, regional disaster recovery, or c
 
 ## Expected behavior
 
-1. Requests are sent continuously through the ALB.
+1. Requests are sent continuously through the application entrypoint.
 2. One EC2 application instance is intentionally terminated.
 3. The ALB stops routing new traffic to the failed/unhealthy target after health state changes.
 4. Remaining healthy targets continue serving requests if sufficient healthy capacity exists.
@@ -35,39 +35,26 @@ aws configure get region
 terraform output
 ```
 
-## Step 1: Start a continuous HTTP probe
+## Step 1: Start the repository probe
 
-```bash
-ALB_DNS=$(terraform output -raw alb_public_dns)
-
-echo "Starting probe against $ALB_DNS"
-while true; do
-  TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-  STATUS=$(curl --max-time 5 -s -o /dev/null -w "%{http_code}" "$ALB_DNS" || echo "FAILED")
-  echo "$TS status=$STATUS"
-  sleep 1
-done
-```
-
-Save the output if you want evidence for a portfolio or interview.
-
-Example:
+The probe uses `application_url`, so it follows the configured entrypoint: ALB HTTP for the default lab or the custom HTTPS domain when enabled.
 
 ```bash
 ./scripts/chaos_test.sh | tee chaos-test-$(date +%Y%m%d-%H%M%S).log
 ```
 
+Keep the resulting log as evidence if you plan to discuss the test in a portfolio or interview.
+
 ## Step 2: Confirm target health
 
+Use the exact target-group ARN from Terraform rather than guessing a resource name:
+
 ```bash
-TG_ARN=$(aws elbv2 describe-target-groups \
-  --names three-tier-prod-tg \
-  --query 'TargetGroups[0].TargetGroupArn' \
-  --output text)
+TG_ARN=$(terraform output -raw target_group_arn)
 
 aws elbv2 describe-target-health \
   --target-group-arn "$TG_ARN" \
-  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State]' \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State,TargetHealth.Reason]' \
   --output table
 ```
 
@@ -75,10 +62,10 @@ Do not continue unless the expected application targets are healthy.
 
 ## Step 3: Identify the Auto Scaling Group and instances
 
+Use the exact ASG name from Terraform:
+
 ```bash
-ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-  --query "AutoScalingGroups[?starts_with(AutoScalingGroupName, 'three-tier-prod-asg-')].AutoScalingGroupName | [0]" \
-  --output text)
+ASG_NAME=$(terraform output -raw autoscaling_group_name)
 
 echo "ASG=$ASG_NAME"
 
@@ -149,7 +136,7 @@ Capture actual values instead of writing expected results as facts:
 
 Good:
 
-> During a controlled single-instance termination test, I sent one HTTP request per second through the ALB. In that specific run, I observed 0 failed requests while the remaining healthy target served traffic. The Auto Scaling Group launched replacement capacity, which became healthy after X seconds.
+> During a controlled single-instance termination test, I sent one HTTP request per second through the application entrypoint. In that specific run, I observed 0 failed requests while the remaining healthy target served traffic. The Auto Scaling Group launched replacement capacity, which became healthy after X seconds.
 
 Bad:
 
