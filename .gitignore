@@ -21,3 +21,9 @@ override.tf.json
 
 # Tool artifacts metadata
 *.metadata.json
+
+# Saved plans can contain sensitive data
+tfplan
+*.tfplan
+*.tfplan.json
+chaos-test-*.log

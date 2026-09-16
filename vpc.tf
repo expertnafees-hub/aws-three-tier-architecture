@@ -9,6 +9,18 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
+  lifecycle {
+    precondition {
+      condition = (
+        length(var.public_subnet_cidrs) >= 2 &&
+        length(var.public_subnet_cidrs) == length(var.private_subnet_cidrs) &&
+        length(var.public_subnet_cidrs) == length(var.database_subnet_cidrs) &&
+        length(var.public_subnet_cidrs) <= length(data.aws_availability_zones.available.names)
+      )
+      error_message = "Use equal subnet counts across all three tiers, at least two, and no more than available AZs."
+    }
+  }
+
   tags = {
     Name = "${var.project_name}-vpc"
   }
@@ -31,7 +43,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidrs[count.index]
   availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = {
     Name = "${var.project_name}-public-subnet-${count.index + 1}"
@@ -106,7 +118,7 @@ resource "aws_route_table" "private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.this[count.index % length(aws_nat_gateway.this)].id
+    nat_gateway_id = aws_nat_gateway.this[count.index].id
   }
 
   tags = {

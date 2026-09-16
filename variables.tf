@@ -13,7 +13,7 @@ variable "project_name" {
 variable "environment" {
   description = "Deployment environment label"
   type        = string
-  default     = "production"
+  default     = "lab"
 }
 
 variable "vpc_cidr" {
@@ -55,7 +55,10 @@ variable "db_username" {
 variable "ec2_ami_id" {
   description = "Pinned Amazon Linux 2023 AMI ID for the selected region; verify it before deployment"
   type        = string
-  default     = "ami-0c101f26f147fa7fd"
+  validation {
+    condition     = can(regex("^ami-[0-9a-f]{8}([0-9a-f]{9})?$", var.ec2_ami_id))
+    error_message = "Supply a reviewed Amazon Linux 2023 x86_64 AMI ID for aws_region."
+  }
 }
 
 variable "db_multi_az" {
@@ -80,4 +83,10 @@ variable "alarm_email" {
   description = "Optional email address for SNS alarm notifications"
   type        = string
   default     = ""
+}
+
+variable "enable_demo_master_secret_access" {
+  description = "Lab-only opt-in: let EC2 read the RDS master secret. The static demo does not need this."
+  type        = bool
+  default     = false
 }

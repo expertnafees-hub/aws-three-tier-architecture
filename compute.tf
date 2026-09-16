@@ -8,6 +8,21 @@ resource "aws_launch_template" "app" {
   image_id      = var.ec2_ami_id
   instance_type = "t3.micro"
 
+  # ASG-dimension CPU metrics require detailed monitoring; this has a cost.
+  monitoring {
+    enabled = true
+  }
+
+  # The reviewed AL2023 x86_64 AMI must use /dev/xvda as its root device.
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      encrypted             = true
+      volume_type           = "gp3"
+      delete_on_termination = true
+    }
+  }
+
   # Application instances are private: no public IPv4 address is assigned.
   # Outbound package/SSM/AWS API access is provided through the private subnet NAT route.
   network_interfaces {
@@ -32,13 +47,10 @@ resource "aws_launch_template" "app" {
 
               dnf update -y
               dnf install -y nginx
-              systemctl start nginx
-              systemctl enable nginx
 
-              TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-              INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-              AVAILABILITY_ZONE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)
-              PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
+              TOKEN=$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --retry 3 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+              INSTANCE_ID=$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --retry 3 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+              AVAILABILITY_ZONE=$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --retry 3 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)
 
               cat <<HTML > /usr/share/nginx/html/index.html
               <!DOCTYPE html>
@@ -72,16 +84,12 @@ resource "aws_launch_template" "app" {
                       <span class="highlight">$AVAILABILITY_ZONE</span>
                     </div>
                     <div class="metric-row">
-                      <span class="metric-label">Private IPv4:</span>
-                      <span>$PRIVATE_IP</span>
-                    </div>
-                    <div class="metric-row">
                       <span class="metric-label">Routing Tier:</span>
                       <span>Application Load Balancer (Tier 1)</span>
                     </div>
                     <div class="metric-row">
                       <span class="metric-label">Database Tier:</span>
-                      <span>Amazon RDS MySQL (Tier 3 Isolated)</span>
+                      <span>RDS provisioned separately; demo does not query it</span>
                     </div>
                   </div>
 
@@ -90,6 +98,9 @@ resource "aws_launch_template" "app" {
               </body>
               </html>
               HTML
+              nginx -t
+              systemctl enable --now nginx
+              systemctl enable --now amazon-ssm-agent
               EOF
   )
 
@@ -119,12 +130,19 @@ resource "aws_autoscaling_group" "app" {
 
   target_group_arns = [aws_lb_target_group.app.arn]
 
+  # Bootstrap needs working egress and the SSM policy, not just subnet IDs.
+  depends_on = [
+    aws_route_table_association.public,
+    aws_route_table_association.private,
+    aws_iam_role_policy_attachment.ssm_core
+  ]
+
   health_check_type         = "ELB"
   health_check_grace_period = 300
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = tostring(aws_launch_template.app.latest_version)
   }
 
   # Rolling refresh improves deployment continuity, but is not described as a
@@ -146,6 +164,5 @@ resource "aws_autoscaling_group" "app" {
 
   lifecycle {
     create_before_destroy = true
-    ignore_changes        = [load_balancers, target_group_arns]
   }
 }

@@ -29,7 +29,7 @@ if [ -z "$APP_URL" ]; then
 fi
 
 echo "Target Endpoint: $APP_URL"
-echo "Starting one HTTP request per second (Press Ctrl+C to stop)..."
+echo "Starting serial probes with a one-second pause after each request (Press Ctrl+C to stop)..."
 echo "----------------------------------------------------------------------"
 printf "%-10s | %-12s | %-15s | %s\n" "TIME" "HTTP STATUS" "AVAILABILITY ZONE" "INSTANCE ID"
 echo "----------------------------------------------------------------------"
@@ -43,18 +43,21 @@ summary() {
   echo "Total Probes: $COUNT"
   echo "Failed/Non-200: $FAILED"
 }
-trap 'summary; cleanup; exit 0' INT
+trap 'summary; exit 0' INT TERM
 
 while true; do
-  TIME=$(date +'%T')
+  TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
   # Capture body and status from the SAME request so backend metadata and status
   # cannot come from different load-balanced targets.
-  STATUS=$(curl --max-time 5 -sS -o "$TMP_BODY" -w "%{http_code}" "$APP_URL" 2>/dev/null || printf '000')
+  : > "$TMP_BODY"
+  if ! STATUS=$(curl --max-time 5 -sS -o "$TMP_BODY" -w "%{http_code}" "$APP_URL" 2>/dev/null); then
+    STATUS="000"
+  fi
   RESP=$(cat "$TMP_BODY" 2>/dev/null || true)
 
   if [ "$STATUS" = "200" ]; then
-    AZ=$(printf '%s' "$RESP" | grep -o 'us-east-1[a-z]' | head -1 || true)
+    AZ=$(printf '%s' "$RESP" | grep -Eo '[a-z]{2}(-[a-z]+)+-[0-9]+[a-z]' | head -1 || true)
     IID=$(printf '%s' "$RESP" | grep -o 'i-[0-9a-f]\{8,17\}' | head -1 || true)
     AZ=${AZ:-unknown}
     IID=${IID:-unknown}
