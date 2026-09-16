@@ -9,23 +9,23 @@ output "alb_public_dns" {
 }
 
 output "vpc_id" {
-  description = "VPC ID of the 3-Tier Network"
+  description = "VPC ID of the three-tier network"
   value       = aws_vpc.main.id
 }
 
 output "database_endpoint" {
-  description = "Private endpoint of the RDS MySQL database (Isolated Tier)"
+  description = "Private endpoint of the RDS MySQL database"
   value       = aws_db_instance.rds.address
   sensitive   = true
 }
 
-output "secrets_manager_secret_arn" {
-  description = "ARN of the AWS Secrets Manager secret storing database credentials"
-  value       = aws_secretsmanager_secret.db_credentials.arn
+output "rds_master_secret_arn" {
+  description = "ARN of the RDS-managed Secrets Manager secret for the database master user"
+  value       = aws_db_instance.rds.master_user_secret[0].secret_arn
 }
 
 output "cloudwatch_dashboard_name" {
-  description = "Name of the CloudWatch Observability Dashboard"
+  description = "Name of the CloudWatch observability dashboard"
   value       = aws_cloudwatch_dashboard.main.dashboard_name
 }
 
