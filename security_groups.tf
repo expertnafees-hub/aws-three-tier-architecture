@@ -6,7 +6,6 @@ resource "aws_security_group" "alb" {
   description = "Controls public ingress to Application Load Balancer"
   vpc_id      = aws_vpc.main.id
 
-  # Ingress: Allow HTTP from everywhere
   ingress {
     description = "HTTP from Internet"
     from_port   = 80
@@ -15,7 +14,6 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Ingress: Allow HTTPS from everywhere
   ingress {
     description = "HTTPS from Internet"
     from_port   = 443
@@ -24,9 +22,10 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Egress: Forward traffic to backend app servers
+  # ALB egress remains broad here so health checks and application forwarding work
+  # without coupling both security groups through inline bidirectional references.
   egress {
-    description = "Allow all outbound traffic"
+    description = "Allow outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -40,25 +39,25 @@ resource "aws_security_group" "alb" {
 }
 
 # -----------------------------------------------------------------------------
-# 2. TIER 2: EC2 APP SECURITY GROUP (Compute Tier)
+# 2. TIER 2: EC2 APP SECURITY GROUP (Private Compute Tier)
 # -----------------------------------------------------------------------------
 resource "aws_security_group" "app" {
   name        = "${var.project_name}-app-sg"
-  description = "Allows ingress ONLY from ALB"
+  description = "Allows application ingress only from the ALB security group"
   vpc_id      = aws_vpc.main.id
 
-  # Ingress: Port 80 ONLY from ALB Security Group!
   ingress {
-    description     = "HTTP from ALB Only"
+    description     = "HTTP from ALB only"
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
-  # Egress: Allow outbound (e.g. to talk to Database or AWS services)
+  # Application instances need outbound access to RDS, package repositories,
+  # Systems Manager and AWS APIs through the NAT path.
   egress {
-    description = "Allow all outbound traffic"
+    description = "Allow outbound traffic from private application instances"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -72,30 +71,23 @@ resource "aws_security_group" "app" {
 }
 
 # -----------------------------------------------------------------------------
-# 3. TIER 3: DATABASE SECURITY GROUP (Data Tier)
+# 3. TIER 3: DATABASE SECURITY GROUP (Isolated Data Tier)
 # -----------------------------------------------------------------------------
 resource "aws_security_group" "database" {
   name        = "${var.project_name}-database-sg"
-  description = "Allows MySQL/Aurora ingress ONLY from App instances"
+  description = "Allows MySQL ingress only from the application security group"
   vpc_id      = aws_vpc.main.id
 
-  # Ingress: MySQL (3306) ONLY from EC2 App Security Group!
   ingress {
-    description     = "MySQL from App tier only"
+    description     = "MySQL from application tier only"
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
     security_groups = [aws_security_group.app.id]
   }
 
-  # Egress: Strictly none (or restricted)
-  egress {
-    description = "Outbound rule"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # No explicit egress rule: response traffic for established connections is
+  # permitted because security groups are stateful.
 
   tags = {
     Name = "${var.project_name}-database-sg"
