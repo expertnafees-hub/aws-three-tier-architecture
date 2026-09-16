@@ -15,30 +15,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: 1.8.5
 
       - name: Terraform Format Check
-        run: terraform fmt -check -diff
+        run: terraform fmt -check -diff -recursive
 
       - name: Terraform Init (No Backend)
         run: terraform init -backend=false
+
+      - name: Shell Syntax Check
+        run: bash -n scripts/chaos_test.sh
 
       - name: Terraform Validate
         run: terraform validate
 
   security:
-    name: "Security Scan (Tfsec)"
+    name: "Advisory Security Scan (not a security gate)"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run Tfsec Security Scan
-        uses: aquasecurity/tfsec-action@v1.0.3
+        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 # v1.0.3
         with:
+          version: v1.28.14
           soft_fail: true
+
+      - name: Explain advisory status
+        run: |
+          echo '### Security scan is advisory' >> "$GITHUB_STEP_SUMMARY"
+          echo 'tfsec soft_fail is enabled. A green job does not mean zero findings. Review scanner output and docs/AUDIT.md before merging.' >> "$GITHUB_STEP_SUMMARY"

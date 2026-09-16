@@ -5,6 +5,13 @@ data "aws_route53_zone" "primary" {
   count        = var.enable_custom_domain ? 1 : 0
   name         = var.domain_name
   private_zone = false
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.domain_name) != "" && !endswith(var.domain_name, ".")
+      error_message = "Custom-domain mode requires a nonempty hosted-zone/domain name without a trailing dot."
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------

@@ -127,16 +127,16 @@ Capture actual values instead of writing expected results as facts:
 - terminated instance ID and Availability Zone
 - number of HTTP requests sent
 - number of failed/non-200 requests observed
-- time until the failed target stopped receiving traffic
+- observed target-health transitions (the serial probe cannot prove the last request served by a failed target)
 - time until replacement capacity launched
 - time until the replacement target became healthy
 - any 5xx/timeout behavior
 
 ## How to describe the result accurately
 
-Good:
+Example wording only — **not a result from this repository**:
 
-> During a controlled single-instance termination test, I sent one HTTP request per second through the application entrypoint. In that specific run, I observed 0 failed requests while the remaining healthy target served traffic. The Auto Scaling Group launched replacement capacity, which became healthy after X seconds.
+> During a controlled single-instance termination test, I sent serial HTTP requests with a one-second pause after each response through the application entrypoint. In that specific run, I observed 0 failed requests while the remaining healthy target served traffic. The Auto Scaling Group launched replacement capacity, which became healthy after X seconds.
 
 Bad:
 

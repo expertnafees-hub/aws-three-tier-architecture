@@ -1,8 +1,8 @@
 # -----------------------------------------------------------------------------
 # CLOUDWATCH ALARMS & OBSERVABILITY TELEMETRY
 # -----------------------------------------------------------------------------
-# Provides comprehensive enterprise monitoring for Tier 1 (ALB), Tier 2 (ASG/EC2),
-# and Tier 3 backend components with automated SNS alerting.
+# Provides four ALB/EC2 metric alarms and a dashboard. No RDS alarms or logs.
+# Email delivery requires alarm_email and confirmation of the SNS subscription.
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
@@ -28,7 +28,7 @@ resource "aws_sns_topic_subscription" "email_alerts" {
 # -----------------------------------------------------------------------------
 # 2. ALB 5XX TARGET SERVER ERROR ALARM (Tier 1 Gateway)
 # -----------------------------------------------------------------------------
-# Triggers immediately if backend application instances produce HTTP 5XX responses.
+# Evaluates target HTTP 5XX counts over a 60-second period; delivery is not instant.
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   alarm_name          = "${var.project_name}-alb-high-5xx-errors"
   comparison_operator = "GreaterThanThreshold"
@@ -53,7 +53,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
 }
 
 # -----------------------------------------------------------------------------
-# 3. ALB TARGET RESPONSE LATENCY ALARM (p95 SLA Protection)
+# 3. ALB TARGET RESPONSE LATENCY ALARM (Lab Threshold)
 # -----------------------------------------------------------------------------
 # Triggers if p95 backend response time breaches 1.0 second over two 60s windows.
 resource "aws_cloudwatch_metric_alarm" "alb_high_latency" {
@@ -135,9 +135,9 @@ resource "aws_cloudwatch_metric_alarm" "asg_cpu_high" {
 }
 
 # -----------------------------------------------------------------------------
-# 6. ENTERPRISE DEVOPS OBSERVABILITY DASHBOARD
+# 6. LAB METRICS DASHBOARD
 # -----------------------------------------------------------------------------
-# Real-time operational telemetry across network ingress, latency, health, and compute.
+# Periodic ALB/EC2 metrics; not a complete observability or SLA system.
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${var.project_name}-telemetry"
 
