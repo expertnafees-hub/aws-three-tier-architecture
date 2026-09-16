@@ -11,7 +11,7 @@ variable "project_name" {
 }
 
 variable "environment" {
-  description = "Deployment environment"
+  description = "Deployment environment label"
   type        = string
   default     = "production"
 }
@@ -23,7 +23,7 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_cidrs" {
-  description = "CIDR blocks for public subnets"
+  description = "CIDR blocks for public subnets used by the ALB and NAT Gateways"
   type        = list(string)
   default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
@@ -40,12 +40,6 @@ variable "database_subnet_cidrs" {
   default     = ["10.0.20.0/24", "10.0.21.0/24"]
 }
 
-variable "enable_nat_gateway" {
-  description = "Toggle NAT Gateway creation (Set to false for zero-cost dev)"
-  type        = bool
-  default     = false
-}
-
 variable "db_name" {
   description = "Database name"
   type        = string
@@ -59,31 +53,31 @@ variable "db_username" {
 }
 
 variable "ec2_ami_id" {
-  description = "Pinned Amazon Linux 2023 AMI ID in us-east-1 for immutable, deterministic infrastructure"
+  description = "Pinned Amazon Linux 2023 AMI ID for the selected region; verify it before deployment"
   type        = string
   default     = "ami-0c101f26f147fa7fd"
 }
 
 variable "db_multi_az" {
-  description = "Toggle Multi-AZ for RDS (Set to false for zero-cost free tier)"
+  description = "Enable a Multi-AZ RDS deployment. Disabled by default to control lab cost."
   type        = bool
   default     = false
 }
 
 variable "enable_custom_domain" {
-  description = "Toggle Route 53 DNS records, ACM TLS certificate, and ALB HTTPS :443 listener"
+  description = "Enable Route 53 DNS, ACM certificate validation and the ALB HTTPS listener"
   type        = bool
   default     = false
 }
 
 variable "domain_name" {
-  description = "Custom domain name (e.g. app.example.com) for Route 53 and ACM"
+  description = "Existing Route 53 public hosted-zone name to use when enable_custom_domain is true"
   type        = string
   default     = ""
 }
 
 variable "alarm_email" {
-  description = "Optional email address to receive CloudWatch alarm notifications via SNS"
+  description = "Optional email address for SNS alarm notifications"
   type        = string
   default     = ""
 }
