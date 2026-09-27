@@ -22,7 +22,8 @@ resource "aws_db_instance" "rds" {
   # Optional because Multi-AZ roughly doubles database cost for this lab.
   multi_az = var.db_multi_az
 
-  storage_encrypted = true
+  storage_encrypted       = true
+  backup_retention_period = 7
 
   # Portfolio/lab cleanup settings. A production data store would normally use
   # deletion protection, backups and a final-snapshot policy appropriate to its RPO/RTO.

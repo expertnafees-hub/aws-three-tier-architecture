@@ -1,208 +1,114 @@
-Terraform-based AWS three-tier architecture with public ALB, private Auto Scaling EC2, isolated RDS, IAM, Secrets Manager, CloudWatch, and optional Multi-AZ/HTTPS.
-[![Terraform CI Validation](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions)
-[![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.5-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
-[![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+# AWS Three-Tier Infrastructure Lab
 
-A production-style portfolio project that demonstrates how to build a three-tier AWS architecture with Terraform. The design applies AWS Well-Architected principles such as network isolation, least-privilege access, multi-AZ application capacity, encrypted data storage, observability, and automated health recovery.
+[![Terraform CI Validation](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml)
 
-This repository is intentionally honest about what is configurable versus what is enabled by default. Multi-AZ RDS and custom-domain HTTPS are supported but disabled by default to control lab cost.
+A **Junior AWS DevOps portfolio project** built with Terraform: public ALB, private Auto Scaling EC2 instances and isolated RDS MySQL. The application is a static Nginx page. **It does not query RDS or retrieve a secret.** This demonstrates infrastructure configuration, not an enterprise production system.
 
-## Architecture
+## Evidence status
 
-```text
-Internet
-   |
-   v
-Route 53 + ACM (optional custom domain / HTTPS)
-   |
-   v
-Application Load Balancer
-Public subnets across two AZs
-   |
-   v
-Auto Scaling Group
-Private application subnets across two AZs
-No public EC2 IPs
-   |
-   v
-Amazon RDS MySQL
-Isolated database subnets
-Multi-AZ optional
+The audited main commit `1c68c55` passed GitHub Actions formatting and validation ([run](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/runs/35141561165)). Its tfsec job reported **15 potential problems** and passed because `soft_fail` was enabled. CI remains explicitly advisory for security; a green badge does not mean no findings. The badge follows main, not necessarily the branch being viewed.
+
+No deployment output or measured recovery-test results were found in that snapshot. This audit branch proposes fixes; passing CI is not evidence of AWS deployment, database integration, availability or successful recovery.
+
+- [Instructor Review Pack and architecture](docs/INSTRUCTOR_REVIEW_PACK.md)
+- [Audited main architecture snapshot](docs/ARCHITECTURE_MAIN.md)
+- [Detailed audit and remaining limitations](docs/AUDIT.md)
+- [Controlled failure-test procedure](docs/CHAOS_RECOVERY_TEST.md)
+
+## Configured architecture
+
+```mermaid
+flowchart TB
+  Client["Internet client"] -->|"HTTP; optional HTTPS"| ALB["Public ALB in two AZs"]
+  DNS["Optional Route 53 alias + ACM certificate"] -.-> ALB
+  ALB -->|"HTTP 80"| ASG["Private Nginx EC2 / ASG desired 2, min 2, max 4"]
+  ASG -->|"Outbound only"| NAT["Same-AZ NAT Gateways / two by default"]
+  NAT --> IGW["Internet Gateway / package and AWS API access"]
+  ASG -.->|"MySQL 3306 allowed; no application queries"| RDS["Isolated RDS MySQL / Single-AZ default"]
+  RDS -.->|"Managed credentials"| Secret["Secrets Manager"]
 ```
 
-Private application instances use one NAT Gateway per public subnet/AZ for outbound package installation, Systems Manager connectivity, and AWS API access. NAT Gateways incur hourly and data-processing charges.
+The two-AZ DB subnet group does not imply Multi-AZ RDS. Route 53 performs DNS resolution; ACM supplies a certificate. Neither is an inline HTTP proxy. See the review pack for subnet CIDRs and security boundaries.
 
-## What is implemented
+## Implemented in Terraform
 
-- VPC with public, private application, and isolated database subnet tiers
-- Two Availability Zones by default
-- Internet-facing Application Load Balancer
-- EC2 Auto Scaling Group with two-instance baseline and ELB health checks
-- EC2 instances in private subnets with no public IPv4 addresses
-- NAT Gateway per public subnet/AZ for private-tier egress
-- Security-group chaining: Internet -> ALB -> App -> Database
-- No SSH ingress; Systems Manager is used for instance administration
-- IMDSv2 required in the Launch Template
-- RDS MySQL with public access disabled and storage encryption enabled
-- RDS-managed master credentials stored in AWS Secrets Manager
-- IAM policy scoped to the specific RDS-managed secret
-- Optional RDS Multi-AZ deployment through `db_multi_az`
-- Optional Route 53 + ACM HTTPS through `enable_custom_domain`
-- CloudWatch alarms/dashboard and SNS notification support
-- Terraform validation in GitHub Actions
-- Controlled instance-failure runbook for testing ALB/ASG behavior
+| Component | Exact scope |
+| --- | --- |
+| VPC | `10.0.0.0/16`; two subnets per tier by default; VPC DNS; public IGW routes, same-AZ NAT app routes, DB local routes only |
+| ALB | Internet-facing HTTP listener; port-80 target group, `/` health checks requiring 200; invalid-header dropping; app-subnet-only TCP-80 egress |
+| EC2 / ASG | Private `t3.micro` instances; reviewed AL2023 AMI input; IMDSv2, encrypted gp3 root disks, SSM role and detailed monitoring; ELB health replacement; numeric template version and rolling refresh |
+| Scaling | Min 2 / desired 2 / max 4. No CPU/request-based scaling policy; CPU alarm sends notifications only |
+| RDS | MySQL 8.0 family, `db.t3.micro`, 20 GiB, encrypted storage, public access disabled, seven-day backup retention |
+| Secrets / IAM | RDS-managed master password; SSM managed policy; optional exact-secret-ARN read policy, disabled by default |
+| Security groups | Internet to ALB on 80/443; ALB to app on 80; app to DB on 3306; no SSH; app outbound access remains broad |
+| CloudWatch | Four alarms: target 5xx, p95 latency, unhealthy hosts, ASG CPU; ALB/EC2 dashboard and SNS topic; no RDS alarms or log collection |
+| CI | Terraform fmt/init/validate, shell syntax, advisory tfsec. No plan/apply or deployment pipeline |
 
-## Security model
+## Optional features
 
-### Tier 1: ALB
-The ALB is internet-facing and accepts web traffic. When a custom domain is enabled, HTTP redirects to HTTPS and TLS terminates at the ALB.
+| Input | Default | Effect |
+| --- | --- | --- |
+| `db_multi_az` | `false` | Requests an RDS standby for Multi-AZ availability |
+| `enable_custom_domain` | `false` | Existing public hosted-zone lookup, ACM certificate and DNS validation, HTTPS listener, HTTP redirect, Route 53 apex alias |
+| `domain_name` | Empty | Required in custom-domain mode; must match an existing delegated public hosted zone; no trailing dot |
+| `alarm_email` | Empty | SNS email subscription; recipient confirmation required |
+| `enable_demo_master_secret_access` | `false` | Lab-only EC2 permission to read the master secret; unused by Nginx |
 
-### Tier 2: Application
-Application instances receive traffic on port 80 only from the ALB security group. They run in private subnets and do not receive public IP addresses. Administrative access is designed around AWS Systems Manager rather than SSH.
+HTTPS terminates at the ALB; backend traffic remains HTTP. No custom KMS key or key policy is implemented. Service-managed encryption must not be presented as a custom KMS design.
 
-### Tier 3: Database
-RDS is not publicly accessible. MySQL port 3306 is reachable only from the application security group. Database subnets have no default internet route.
+## Validate, plan and deploy deliberately
 
-### Credentials
-RDS generates and manages the master password through AWS Secrets Manager. The application IAM role is allowed to read only that specific secret. Secrets should still be treated carefully in logs, application output, plans, and operational tooling.
-
-## Availability and recovery
-
-The application tier spans two Availability Zones and uses an Auto Scaling Group attached to an ALB target group. ELB health checks allow unhealthy instances to be removed from service and replacement capacity to be launched.
-
-This repository does **not** claim universal zero downtime. The included failure drill is a test procedure for observing behavior during a controlled single-instance termination. Any result should be reported exactly as observed, for example: "no failed requests were observed during this test run." See [`docs/CHAOS_RECOVERY_TEST.md`](docs/CHAOS_RECOVERY_TEST.md).
-
-RDS Multi-AZ is configurable but disabled by default. Set `db_multi_az = true` only when you intentionally want the additional availability and cost.
-
-## HTTPS and DNS
-
-Custom-domain support is optional. With `enable_custom_domain = true` and an existing Route 53 public hosted zone, Terraform creates:
-
-- an ACM certificate
-- DNS validation records
-- an HTTPS listener on the ALB
-- an HTTP-to-HTTPS redirect
-- a Route 53 alias to the ALB
-
-With the default `enable_custom_domain = false`, the project exposes the ALB over HTTP for lab validation.
-
-## Repository structure
-
-```text
-aws-three-tier-architecture/
-├── providers.tf
-├── variables.tf
-├── vpc.tf
-├── security_groups.tf
-├── iam.tf
-├── dns_acm.tf
-├── alb.tf
-├── compute.tf
-├── database.tf
-├── cloudwatch.tf
-├── outputs.tf
-├── docs/
-│   └── CHAOS_RECOVERY_TEST.md
-├── scripts/
-│   └── chaos_test.sh
-└── .github/workflows/
-    └── terraform-ci.yml
-```
-
-## Prerequisites
-
-- Terraform >= 1.5
-- AWS CLI v2
-- An authorized AWS sandbox/account
-- A reviewed AMI ID for your selected region
-- A Route 53 public hosted zone only if custom-domain support is enabled
-
-## Validate
+Prerequisites: Terraform >= 1.5, AWS CLI v2, an authorized sandbox and a reviewed **Amazon Linux 2023 x86_64 AMI with `/dev/xvda` root and SSM agent** in the chosen region. CI uses Terraform 1.8.5 and AWS provider 5.100.0. The AMI input has no default: a regex only checks ID syntax, not ownership, availability or compatibility.
 
 ```bash
-terraform init
+terraform init -backend=false
 terraform fmt -check -recursive
 terraform validate
+bash -n scripts/chaos_test.sh
 ```
 
-## Plan and deploy
-
-Review cost before applying. This architecture creates NAT Gateways, an ALB, EC2 capacity, RDS, CloudWatch resources, and potentially other billable services.
+Before any deployment, supply `ec2_ami_id` and `aws_region` in a local ignored `terraform.tfvars`, check CIDR containment/overlap, confirm engine/class availability and review costs. For a new lab, choose a project name such as `three-tier-lab`; the legacy default `three-tier-prod` is retained to avoid replacing existing named resources and is **not** a production-readiness claim.
 
 ```bash
 aws sts get-caller-identity
-terraform init
 terraform plan -out=tfplan
 terraform show tfplan
+# Only after reviewing the actual plan and costs:
 terraform apply tfplan
 ```
 
-For a cost-controlled lab, leave these defaults unchanged unless you explicitly need them:
+No command above has been represented as a successful deployment. NAT Gateways, ALB, EC2/EBS, RDS/backups, Secrets Manager and detailed monitoring can incur charges. This is not a free-tier guarantee.
 
-```hcl
-db_multi_az         = false
-enable_custom_domain = false
-```
+## State and repeatability
 
-For a stronger HA demonstration, enable Multi-AZ RDS deliberately:
-
-```hcl
-db_multi_az = true
-```
-
-## Terraform state
-
-This repository does not pretend that local state is production state management. Configure an encrypted remote backend with locking before collaborative or long-lived use. Never commit `terraform.tfstate`, saved plan files, or credentials.
-
-## Failure test
-
-The included runbook explains how to send continuous requests through the ALB, terminate one application instance, and observe target health and Auto Scaling recovery.
-
-Use the result as measured evidence, not as a blanket claim. Preserve real timestamps/output if you want to discuss the test in an interview.
+Local state is the default. Configure an encrypted remote backend with locking before shared or long-lived use. State, saved plans and local tfvars must not be committed. Generate and review `.terraform.lock.hcl` with `terraform init` and commit it; the current provider pin alone is not a checksum lock. Bootstrap runs `dnf update`, so package versions are not immutable even when the AMI is pinned.
 
 ## Known limitations
 
-- RDS Multi-AZ is disabled by default
-- Custom-domain HTTPS is disabled by default
-- No WAF is included in this repository
-- No automated backup/restore drill is included
-- No cross-region disaster recovery is implemented
-- Terraform remote state is not preconfigured
-- The Nginx demo is intentionally simple and is not a full application
-- NAT Gateways add cost; destroy the lab when it is not needed
+- Static demo only; no application-to-database integration or restricted DB application user.
+- RDS is Single-AZ by default; HTTP is the default public protocol. Do not put sensitive data in the demo.
+- Refresh allows 50% healthy capacity. There is no load-driven scaling, baked image, automatic rollback or zero-downtime guarantee.
+- Nginx `/` health checks do not check DB or SSM readiness. Bootstrap depends on NAT/package repositories and can exceed the 300-second grace period.
+- App egress is broad; demo instance IDs/AZs are public for the probe. No WAF, VPC endpoints, flow logs, ALB access logs, custom KMS policy, RDS alarms, log agent, or cross-region recovery.
+- SNS topic encryption is not configured. Email delivery is unverified and requires subscription confirmation. Alarms treat missing data as non-breaching.
+- Backups are configured, but restoration has not been demonstrated. RDS deletion protection is off and final snapshot is skipped.
+- CI security findings remain visible and non-blocking; no AWS plan/apply or runtime test runs in CI.
 
-## Cleanup
+## Failure drill and cleanup
+
+The [runbook](docs/CHAOS_RECOVERY_TEST.md) describes a controlled single-instance termination. The probe sends serial requests with a one-second pause after each response (up to five seconds per request); it is not a load test or a zero-downtime proof. Preserve real timestamps and target/ASG observations before claiming results.
 
 ```bash
 terraform plan -destroy -out=destroy.tfplan
 terraform show destroy.tfplan
+# Destructive: only after reviewing the actual plan.
 terraform apply destroy.tfplan
 ```
 
-Verify that NAT Gateways, Elastic IPs, ALB resources, EC2 capacity, RDS, snapshots, DNS records, and other retained resources are removed or intentionally preserved.
+Destroy skips a final DB snapshot. Explicitly back up any data you need first. Verify retained backups, EIPs, NAT Gateways, DNS records and other billable resources afterward.
 
-## Interview scope
+## Source map
 
-This project is designed to demonstrate junior-level AWS DevOps skills in:
+`vpc.tf` routes/subnets; `security_groups.tf` traffic rules; `alb.tf` listeners/targets; `compute.tf` launch template/ASG/bootstrap; `database.tf` RDS; `iam.tf` instance permissions; `dns_acm.tf` optional DNS/TLS; `cloudwatch.tf` metrics/SNS; `variables.tf` inputs; `outputs.tf` identifiers; `providers.tf` versions; `.github/workflows/terraform-ci.yml` CI.
 
-- VPC and subnet design
-- routing and NAT
-- security groups
-- ALB and target groups
-- Auto Scaling
-- EC2 launch templates
-- RDS networking and availability options
-- IAM and Systems Manager
-- Secrets Manager
-- Route 53 and ACM
-- CloudWatch
-- Terraform
-- failure testing and operational reasoning
-
-The value of the project is not the number of AWS services used; it is being able to explain why each component exists, how traffic flows, what can fail, and how the system recovers.
-
-## Author
-
-**Nafees Ur Rehman**  
-AWS DevOps / Cloud Engineering portfolio
+**Author:** Nafees Ur Rehman · AWS DevOps / Cloud Engineering portfolio · [MIT license](LICENSE)

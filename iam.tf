@@ -35,7 +35,11 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
 # -----------------------------------------------------------------------------
 # 3. LEAST-PRIVILEGE POLICY: READ ONLY THIS RDS-MANAGED SECRET
 # -----------------------------------------------------------------------------
+# Optional learning exercise only: the static demo has no database client.
+# A real application should use its own restricted DB user, not the master user.
 resource "aws_iam_policy" "secrets_read" {
+  count = var.enable_demo_master_secret_access ? 1 : 0
+
   name_prefix = "${var.project_name}-secrets-read-"
   description = "Allows application instances to retrieve only the RDS-managed master credential secret"
 
@@ -60,8 +64,10 @@ resource "aws_iam_policy" "secrets_read" {
 }
 
 resource "aws_iam_role_policy_attachment" "secrets_read" {
+  count = var.enable_demo_master_secret_access ? 1 : 0
+
   role       = aws_iam_role.ec2_ssm.name
-  policy_arn = aws_iam_policy.secrets_read.arn
+  policy_arn = aws_iam_policy.secrets_read[0].arn
 }
 
 # -----------------------------------------------------------------------------

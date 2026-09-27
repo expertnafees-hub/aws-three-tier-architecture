@@ -22,14 +22,13 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # ALB egress remains broad here so health checks and application forwarding work
-  # without coupling both security groups through inline bidirectional references.
+  # CIDR-scoped egress avoids an inline ALB/app SG dependency cycle.
   egress {
-    description = "Allow outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP forwarding and health checks to private application subnets"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = var.private_subnet_cidrs
   }
 
   tags = {

@@ -9,6 +9,7 @@ resource "aws_lb" "main" {
   subnets            = aws_subnet.public[*].id
 
   enable_deletion_protection = false
+  drop_invalid_header_fields = true
 
   tags = {
     Name = "${var.project_name}-alb"
@@ -52,7 +53,7 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
-  # Production Flow: When custom domain is enabled, redirect HTTP :80 -> HTTPS :443
+  # Custom-domain flow: When custom domain is enabled, redirect HTTP :80 -> HTTPS :443
   dynamic "default_action" {
     for_each = var.enable_custom_domain ? [1] : []
     content {
