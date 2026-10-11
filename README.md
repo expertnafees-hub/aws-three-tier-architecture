@@ -2,7 +2,7 @@
 
 [![Terraform CI Validation](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/workflows/terraform-ci.yml)
 
-A **Junior AWS DevOps portfolio project** built with Terraform: public ALB, private Auto Scaling EC2 instances and isolated RDS MySQL. The application is a static Nginx page. **It does not query RDS or retrieve a secret.** This demonstrates infrastructure configuration, not an enterprise production system.
+A  **AWS DevOps portfolio project** built with Terraform: public ALB, private Auto Scaling EC2 instances and isolated RDS MySQL. The application is a static Nginx page. **It does not query RDS or retrieve a secret.** This demonstrates infrastructure configuration, not an enterprise production system.
 
 ## Evidence status
 
