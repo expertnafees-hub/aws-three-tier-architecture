@@ -8,8 +8,9 @@ A  **AWS DevOps portfolio project** built with Terraform: public ALB, private Au
 
 The audited main commit `1c68c55` passed GitHub Actions formatting and validation ([run](https://github.com/expertnafees-hub/aws-three-tier-architecture/actions/runs/35141561165)). Its tfsec job reported **15 potential problems** and passed because `soft_fail` was enabled. CI remains explicitly advisory for security; a green badge does not mean no findings. The badge follows main, not necessarily the branch being viewed.
 
-No deployment output or measured recovery-test results were found in that snapshot. This audit branch proposes fixes; passing CI is not evidence of AWS deployment, database integration, availability or successful recovery.
+Static CI validation was complemented by a self-run AWS learning lab deployment on 2026-10-15 (recorded in [VALIDATION.md](docs/VALIDATION.md)), verifying multi-AZ target routing through the ALB (`three-tier-lab-alb-320682467.us-east-1.elb.amazonaws.com`). Passing CI and self-run lab executions remain strictly distinguished from enterprise production claims.
 
+- [Validation records and live deployment evidence](docs/VALIDATION.md)
 - [Instructor Review Pack and architecture](docs/INSTRUCTOR_REVIEW_PACK.md)
 - [Audited main architecture snapshot](docs/ARCHITECTURE_MAIN.md)
 - [Detailed audit and remaining limitations](docs/AUDIT.md)

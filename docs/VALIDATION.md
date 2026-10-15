@@ -20,4 +20,17 @@ The [advisory scanner job](https://github.com/expertnafees-hub/aws-three-tier-ar
 
 The local environment has no Terraform binary, and the attempted official binary download timed out. Terraform success above is verified from the new PR CI, not inferred from main. `terraform validate` does not exercise AWS API availability or prove both optional deployment modes can be applied.
 
-No AWS plan, apply, runtime, database, DNS/TLS, notification, recovery or restore test was executed by this audit.
+No AWS plan, apply, runtime, database, DNS/TLS, notification, recovery or restore test was executed by that 2026-09-16 audit.
+
+## Live AWS lab deployment and runtime verification
+
+- **Execution date:** 2026-10-15
+- **Environment:** Self-run AWS learning lab (`three-tier-lab`, region `us-east-1`)
+- **Verified endpoint:** `http://three-tier-lab-alb-320682467.us-east-1.elb.amazonaws.com`
+- **Serving target:** EC2 instance `i-0f7eb3ed81894cf1c` in Availability Zone `us-east-1a`
+- **Application status:** HTTP 200, Nginx serving instance metadata (`● TIER 2 COMPUTE ACTIVE`)
+- **Routing tier (Tier 1):** Public Application Load Balancer routing across public subnets to healthy private targets
+- **Compute tier (Tier 2):** EC2 Auto Scaling Group fleet in private subnets with IMDSv2 and SSM agent active; no public IP assigned
+- **Database tier (Tier 3):** Isolated Amazon RDS MySQL subnet group provisioned in dedicated subnets (demo does not query RDS; database provisioned separately)
+- **Scope note:** This records a single-region self-run learning lab execution; it is not a claim of production enterprise operations or cross-region failover.
+
